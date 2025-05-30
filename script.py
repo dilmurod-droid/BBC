@@ -429,16 +429,16 @@ import logging
 import os
 import re
 from aiogram import Bot, Dispatcher, types, F
+from aiogram.enums import ParseMode
+from aiogram.types import InputMediaPhoto, InputMediaVideo
 
 API_TOKEN = "8022760553:AAF-XKj3e9l_jt_wRjH5mtiN_7umauNXsEw"
-
 CHANNEL_USERNAME = "@bbclduz"
-
 ADMINS_FILE = "admins.json"
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=API_TOKEN)
+bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 
 def load_json(filename, default):
@@ -449,9 +449,7 @@ def load_json(filename, default):
     try:
         with open(filename, "r", encoding="utf-8") as f:
             content = f.read().strip()
-            if not content:
-                return default
-            return json.loads(content)
+            return json.loads(content) if content else default
     except Exception as e:
         logging.error(f"Failed to load {filename}: {e}")
         return default
@@ -463,23 +461,57 @@ def save_json(filename, data):
     except Exception as e:
         logging.error(f"Failed to save {filename}: {e}")
 
-# Load admins from json or set defaults
 ADMINS = set(load_json(ADMINS_FILE, [6667155546, 7148646716]))
 
 def save_admins():
     save_json(ADMINS_FILE, list(ADMINS))
 
-def remove_links_and_mentions(text: str) -> str:
-    # Remove urls and @usernames, telegram links, t.me links, etc.
+def remove_explicit_links_and_mentions(text: str) -> str:
+    # Preserves hidden links (e.g., <a href='...'>text</a>) but removes plain ones
     pattern = re.compile(
-        r"(https?://\S+|www\.\S+|t\.me/\S+|telegram\.me/\S+|@[\w_]+)", re.IGNORECASE
+        r"(?<!href=['\"])(https?://\S+|www\.\S+|t\.me/\S+|telegram\.me/\S+|@[\w_]+)",
+        re.IGNORECASE
     )
     cleaned = pattern.sub("", text)
-    # Clean up multiple spaces and strip
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned
+    return re.sub(r"\s+", " ", cleaned).strip()
 
-@dp.message(F.from_user.id.in_(ADMINS) & (F.text | F.photo | F.video))
+media_group_buffers = {}
+
+@dp.message(F.from_user.id.in_(ADMINS), F.media_group_id)
+async def handle_media_group(message: types.Message):
+    media_group_id = message.media_group_id
+    media_group_buffers.setdefault(media_group_id, []).append(message)
+
+    # Wait a short time to ensure all media in group is received
+    await asyncio.sleep(1)
+
+    messages = media_group_buffers.pop(media_group_id, [])
+    if not messages:
+        return
+
+    caption_msg = next((m for m in messages if m.caption), messages[0])
+    text = caption_msg.caption or ""
+    cleaned_text = remove_explicit_links_and_mentions(text)
+    if cleaned_text:
+        cleaned_text += f" <a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
+    else:
+        cleaned_text = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
+
+    media = []
+    for msg in messages:
+        if msg.photo:
+            media.append(InputMediaPhoto(media=msg.photo[-1].file_id, caption=cleaned_text if len(media) == 0 else None, parse_mode=ParseMode.HTML))
+        elif msg.video:
+            media.append(InputMediaVideo(media=msg.video.file_id, caption=cleaned_text if len(media) == 0 else None, parse_mode=ParseMode.HTML))
+
+    if media:
+        try:
+            await bot.send_media_group(chat_id=CHANNEL_USERNAME, media=media)
+            await caption_msg.reply("✅ Media guruhi kanalga yuborildi.")
+        except Exception as e:
+            await caption_msg.reply(f"❌ Xatolik yuz berdi: {e}")
+
+@dp.message(F.from_user.id.in_(ADMINS))
 async def admin_message_handler(message: types.Message):
     logging.info(f"Message from admin {message.from_user.id}")
     text = message.text or message.caption or ""
@@ -487,11 +519,11 @@ async def admin_message_handler(message: types.Message):
         await message.reply("❗️ Matn, rasm yoki video jo'nating.")
         return
 
-    cleaned_text = remove_links_and_mentions(text)
+    cleaned_text = remove_explicit_links_and_mentions(text)
     if cleaned_text:
-        cleaned_text += " @bbclduz"
+        cleaned_text += f" <a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
     else:
-        cleaned_text = "@bbclduz"
+        cleaned_text = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
 
     try:
         if message.video:
@@ -499,15 +531,17 @@ async def admin_message_handler(message: types.Message):
                 chat_id=CHANNEL_USERNAME,
                 video=message.video.file_id,
                 caption=cleaned_text,
+                parse_mode=ParseMode.HTML
             )
         elif message.photo:
             await bot.send_photo(
                 chat_id=CHANNEL_USERNAME,
                 photo=message.photo[-1].file_id,
                 caption=cleaned_text,
+                parse_mode=ParseMode.HTML
             )
         else:
-            await bot.send_message(chat_id=CHANNEL_USERNAME, text=cleaned_text)
+            await bot.send_message(chat_id=CHANNEL_USERNAME, text=cleaned_text, parse_mode=ParseMode.HTML)
 
         await message.reply("✅ Xabar kanalga yuborildi.")
     except Exception as e:
@@ -515,7 +549,6 @@ async def admin_message_handler(message: types.Message):
 
 @dp.message()
 async def not_admin_handler(message: types.Message):
-    # Ignore messages from non-admins silently or reply if you want
     if message.from_user.id not in ADMINS:
         logging.info(f"Message from non-admin {message.from_user.id} ignored.")
 
