@@ -433,7 +433,7 @@ from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
 from aiogram.types import InputMediaPhoto, InputMediaVideo
 
-API_TOKEN = "BOT_TOKEN"
+API_TOKEN = "8022760553:AAF-XKj3e9l_jt_wRjH5mtiN_7umauNXsEw"
 CHANNEL_USERNAME = "@bbclduz"
 ADMINS_FILE = "admins.json"
 
