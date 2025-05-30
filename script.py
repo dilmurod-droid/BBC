@@ -789,10 +789,11 @@ import ssl
 from html.parser import HTMLParser
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
-from aiogram.types import InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.utils.chat_action import ChatActionSender
 
 API_TOKEN = "7364378096:AAHQ14X098RshIlptl8fm7ZEepYA3dIsAQY"
 CHANNEL_USERNAME = "@bbclduz"
@@ -806,10 +807,12 @@ dp = Dispatcher(storage=MemoryStorage())
 class Form(StatesGroup):
     choose_mode = State()
     ask_link = State()
+    ask_target_channel = State()
     save_content = State()
 
 pending_messages = {}
 
+# --- Helpers ---
 def load_json(filename, default):
     if not os.path.exists(filename):
         with open(filename, "w", encoding="utf-8") as f:
@@ -896,6 +899,12 @@ async def choose_button_mode(callback: types.CallbackQuery, state: FSMContext):
 @dp.message(Form.ask_link)
 async def receive_link(message: types.Message, state: FSMContext):
     await state.update_data(link=message.text)
+    await message.answer("Kanal username-ni yuboring (masalan: @mychannel):")
+    await state.set_state(Form.ask_target_channel)
+
+@dp.message(Form.ask_target_channel)
+async def receive_target_channel(message: types.Message, state: FSMContext):
+    await state.update_data(target_channel=message.text.strip())
     await message.answer("Endi xabarni yuboring.")
     await state.set_state(Form.save_content)
 
@@ -909,9 +918,13 @@ async def handle_final_message(message: types.Message, state: FSMContext):
 
     reply_markup = None
     if data.get("button_mode") == "with_button":
-        url = data.get("link")
-        button = InlineKeyboardButton(text="Davomini o'qish...", url=url)
-        reply_markup = InlineKeyboardMarkup(inline_keyboard=[[button]])
+        ref_id = f"{message.from_user.id}_{message.message_id}"
+        url_button = InlineKeyboardButton(text="Davomini o'qish...", callback_data=f"readmore:{ref_id}")
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=[[url_button]])
+        pending_messages[ref_id] = {
+            "link": data.get("link"),
+            "target_channel": data.get("target_channel")
+        }
 
     try:
         if message.photo:
@@ -925,6 +938,24 @@ async def handle_final_message(message: types.Message, state: FSMContext):
         await message.reply(f"❌ Yuborishda xatolik: {e}")
 
     await state.clear()
+
+@dp.callback_query(F.data.startswith("readmore:"))
+async def handle_readmore(callback: CallbackQuery):
+    ref_id = callback.data.split(":", 1)[1]
+    info = pending_messages.get(ref_id)
+    if not info:
+        await callback.message.answer("❌ Ma'lumot topilmadi.")
+        return
+
+    user_id = callback.from_user.id
+    try:
+        member = await bot.get_chat_member(chat_id=info["target_channel"], user_id=user_id)
+        if member.status in ("member", "administrator", "creator"):
+            await callback.message.answer(f"✅ <a href='{info['link']}'>Ma'lumotni o'qish</a>", parse_mode=ParseMode.HTML)
+        else:
+            raise Exception("Not a member")
+    except:
+        await callback.message.answer("❗️Avval kanalga obuna bo'ling.")
 
 @dp.message()
 async def handle_non_admin(message: types.Message):
