@@ -428,7 +428,8 @@ import json
 import logging
 import os
 import re
-from aiogram import Bot, Dispatcher, types, F
+from html.parser import HTMLParser
+from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
 from aiogram.types import InputMediaPhoto, InputMediaVideo
 
@@ -438,9 +439,10 @@ ADMINS_FILE = "admins.json"
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
+# --- Admins ---
 def load_json(filename, default):
     if not os.path.exists(filename):
         with open(filename, "w", encoding="utf-8") as f:
@@ -462,94 +464,117 @@ def save_json(filename, data):
         logging.error(f"Failed to save {filename}: {e}")
 
 ADMINS = set(load_json(ADMINS_FILE, [6667155546, 7148646716]))
-
 def save_admins():
     save_json(ADMINS_FILE, list(ADMINS))
 
-def remove_explicit_links_and_mentions(text: str) -> str:
-    # Preserves hidden links (e.g., <a href='...'>text</a>) but removes plain ones
-    pattern = re.compile(
-        r"(?<!href=['\"])(https?://\S+|www\.\S+|t\.me/\S+|telegram\.me/\S+|@[\w_]+)",
-        re.IGNORECASE
-    )
-    cleaned = pattern.sub("", text)
-    return re.sub(r"\s+", " ", cleaned).strip()
+# --- HTML-safe cleaner that preserves tags and formatting ---
+class SafeHTMLCleaner(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.result = []
 
+    def handle_starttag(self, tag, attrs):
+        if tag in {"b", "i", "u", "s", "code", "pre", "a"}:
+            attr_str = ' '.join(f'{k}="{v}"' for k, v in attrs)
+            self.result.append(f"<{tag} {attr_str}>".strip())
+
+    def handle_endtag(self, tag):
+        if tag in {"b", "i", "u", "s", "code", "pre", "a"}:
+            self.result.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        # Remove only raw links/mentions not inside href
+        data = re.sub(r"(?<!href=[\"'])https?://\S+", "", data)
+        data = re.sub(r"(?<!href=[\"'])t\.me/\S+", "", data)
+        data = re.sub(r"(?<!href=[\"'])telegram\.me/\S+", "", data)
+        data = re.sub(r"(?<!href=[\"'])@[\w_]+", "", data)
+        self.result.append(data)
+
+    def get_cleaned(self):
+        return ''.join(self.result)
+
+def clean_text_preserve_html(text: str) -> str:
+    parser = SafeHTMLCleaner()
+    parser.feed(text)
+    return parser.get_cleaned().strip()
+
+# Add @bbclduz after 👉 if found, else at end
+def insert_at_symbol(text: str, tag: str) -> str:
+    if "👉" in text:
+        return text.replace("👉", f"👉 {tag}", 1)
+    return text.strip() + f" {tag}"
+
+# --- /start command ---
+@dp.message(F.text == "/start")
+async def cmd_start(message: types.Message):
+    if message.from_user.id in ADMINS:
+        await message.reply("👋 Salom, admin! Xabar yuborishingiz mumkin.")
+    else:
+        await message.reply("❗️ Ushbu bot faqat adminlar uchun mo'ljallangan.")
+
+# --- Handle media groups (albums) ---
 media_group_buffers = {}
+
 @dp.message(F.from_user.id.in_(ADMINS), F.media_group_id)
-async def handle_media_group(message: types.Message):
-    media_group_id = message.media_group_id
-    media_group_buffers.setdefault(media_group_id, []).append(message)
+async def handle_album(message: types.Message):
+    group_id = message.media_group_id
+    media_group_buffers.setdefault(group_id, []).append(message)
+    await asyncio.sleep(1.2)
 
-    # Wait a short time to ensure all media in group is received
-    await asyncio.sleep(1)
-
-    messages = media_group_buffers.pop(media_group_id, [])
+    messages = media_group_buffers.pop(group_id, [])
     if not messages:
         return
 
-    caption_msg = next((m for m in messages if m.caption), messages[0])
-    text = caption_msg.caption or ""
-    cleaned_text = remove_explicit_links_and_mentions(text)
-    if cleaned_text:
-        cleaned_text += f" <a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
-    else:
-        cleaned_text = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
+    caption_message = next((m for m in messages if m.caption), messages[0])
+    text = caption_message.caption or ""
+    cleaned = clean_text_preserve_html(text)
+    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
+    cleaned = insert_at_symbol(cleaned, tag)
 
     media = []
-    for msg in messages:
+    for i, msg in enumerate(messages):
+        caption = cleaned if i == 0 else None
         if msg.photo:
-            media.append(InputMediaPhoto(media=msg.photo[-1].file_id, caption=cleaned_text if len(media) == 0 else None, parse_mode=ParseMode.HTML))
+            media.append(InputMediaPhoto(media=msg.photo[-1].file_id, caption=caption, parse_mode=ParseMode.HTML))
         elif msg.video:
-            media.append(InputMediaVideo(media=msg.video.file_id, caption=cleaned_text if len(media) == 0 else None, parse_mode=ParseMode.HTML))
+            media.append(InputMediaVideo(media=msg.video.file_id, caption=caption, parse_mode=ParseMode.HTML))
 
-    if media:
-        try:
-            await bot.send_media_group(chat_id=CHANNEL_USERNAME, media=media)
-            await caption_msg.reply("✅ Media guruhi kanalga yuborildi.")
-        except Exception as e:
-            await caption_msg.reply(f"❌ Xatolik yuz berdi: {e}")
+    try:
+        await bot.send_media_group(chat_id=CHANNEL_USERNAME, media=media)
+        await caption_message.reply("✅ Media guruhi kanalga yuborildi.")
+    except Exception as e:
+        await caption_message.reply(f"❌ Xatolik: {e}")
 
+# --- Handle individual messages ---
 @dp.message(F.from_user.id.in_(ADMINS))
-async def admin_message_handler(message: types.Message):
-    logging.info(f"Message from admin {message.from_user.id}")
+async def handle_admin_message(message: types.Message):
     text = message.text or message.caption or ""
     if not text and not (message.photo or message.video):
         await message.reply("❗️ Matn, rasm yoki video jo'nating.")
         return
 
-    cleaned_text = remove_explicit_links_and_mentions(text)
-    if cleaned_text:
-        cleaned_text += f" <a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
-    else:
-        cleaned_text = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
+    cleaned = clean_text_preserve_html(text)
+    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
+    cleaned = insert_at_symbol(cleaned, tag)
 
     try:
-        if message.video:
-            await bot.send_video(
-                chat_id=CHANNEL_USERNAME,
-                video=message.video.file_id,
-                caption=cleaned_text,
-                parse_mode=ParseMode.HTML
-            )
-        elif message.photo:
-            await bot.send_photo(
-                chat_id=CHANNEL_USERNAME,
-                photo=message.photo[-1].file_id,
-                caption=cleaned_text,
-                parse_mode=ParseMode.HTML
-            )
+        if message.photo:
+            await bot.send_photo(CHANNEL_USERNAME, message.photo[-1].file_id, caption=cleaned, parse_mode=ParseMode.HTML)
+        elif message.video:
+            await bot.send_video(CHANNEL_USERNAME, message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML)
         else:
-            await bot.send_message(chat_id=CHANNEL_USERNAME, text=cleaned_text, parse_mode=ParseMode.HTML)
+            await bot.send_message(CHANNEL_USERNAME, cleaned, parse_mode=ParseMode.HTML)
 
         await message.reply("✅ Xabar kanalga yuborildi.")
     except Exception as e:
-        await message.reply(f"❌ Kanalga yuborishda xatolik: {e}")
+        await message.reply(f"❌ Yuborishda xatolik: {e}")
 
+# --- Ignore non-admins ---
 @dp.message()
-async def not_admin_handler(message: types.Message):
+async def handle_non_admin(message: types.Message):
     if message.from_user.id not in ADMINS:
-        logging.info(f"Message from non-admin {message.from_user.id} ignored.")
+        logging.info(f"⛔ Blocked message from non-admin: {message.from_user.id}")
 
+# --- Run bot ---
 if __name__ == "__main__":
     asyncio.run(dp.start_polling(bot))
