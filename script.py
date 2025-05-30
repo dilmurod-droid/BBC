@@ -786,26 +786,19 @@ import logging
 import os
 import re
 from html.parser import HTMLParser
-
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
-from aiogram.types import (
-    InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup,
-    InlineKeyboardButton, CallbackQuery
-)
+from aiogram.types import InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMedia
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.utils.chat_action import ChatActionSender
 
-# --- Configuration ---
 API_TOKEN = "7364378096:AAHQ14X098RshIlptl8fm7ZEepYA3dIsAQY"
 CHANNEL_USERNAME = "@bbclduz"
 ADMINS_FILE = "admins.json"
 
 logging.basicConfig(level=logging.INFO)
 
-# --- Initialization ---
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -816,6 +809,7 @@ class Form(StatesGroup):
     save_content = State()
 
 pending_messages = {}
+media_groups = {}
 
 # --- Helpers ---
 def load_json(filename, default):
@@ -873,13 +867,12 @@ def clean_text_preserve_html(text: str) -> str:
     return parser.get_cleaned().strip()
 
 def insert_at_symbol(text: str, tag: str) -> str:
-    markers = ["\ud83d\udc49", "\u26a1\ufe0f"]  # 👉 ⚡️
+    markers = ["👉", "⚡️"]
     for mark in markers:
         if mark in text:
             return text.replace(mark, f"{mark} {tag}", 1)
     return text.strip() + f" {tag}"
 
-# --- Handlers ---
 @dp.message(F.text == "/start")
 async def cmd_start(message: types.Message, state: FSMContext):
     if message.from_user.id in ADMINS:
@@ -890,7 +883,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await message.answer("Choose message type:", reply_markup=keyboard)
         await state.set_state(Form.choose_mode)
     else:
-        await message.reply("\u2757\ufe0f Ushbu bot faqat adminlar uchun mo'ljallangan.")
+        await message.reply("❗️ Ushbu bot faqat adminlar uchun mo'ljallangan.")
 
 @dp.callback_query(F.data.in_({"with_button", "without_button"}))
 async def choose_button_mode(callback: types.CallbackQuery, state: FSMContext):
@@ -917,13 +910,59 @@ async def receive_target_channel(message: types.Message, state: FSMContext):
 @dp.message(Form.save_content)
 async def handle_final_message(message: types.Message, state: FSMContext):
     data = await state.get_data()
+    user_id = message.from_user.id
+    media_group_id = message.media_group_id
+    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
+    reply_markup = None
+    second_markup = None
+
+    if media_group_id:
+        media_groups.setdefault(media_group_id, []).append(message)
+        await asyncio.sleep(1.5)  # Short delay to allow group to finish
+
+        messages = media_groups.pop(media_group_id, [])
+        if len(messages) < 2:
+            return  # Let the single one fall through normally
+
+        media = []
+        caption = messages[0].caption or messages[0].text or ""
+        cleaned = clean_text_preserve_html(caption)
+        cleaned = insert_at_symbol(cleaned, tag)
+
+        if data.get("button_mode") == "with_button":
+            ref_id = f"{user_id}_{messages[0].message_id}"
+            reply_markup = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="Davomini o'qish...", url=f"https://t.me/{data.get('target_channel').lstrip('@')}")]
+            ])
+            second_markup = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="Davomini o'qish...", callback_data=f"readmore:{ref_id}")]
+            ])
+            pending_messages[ref_id] = {
+                "link": data.get("link"),
+                "target_channel": data.get("target_channel")
+            }
+
+        for i, msg in enumerate(messages):
+            file = msg.photo[-1].file_id if msg.photo else msg.video.file_id
+            media_type = "photo" if msg.photo else "video"
+            caption_text = cleaned if i == 0 else None
+            input_media = (
+                InputMediaPhoto(media=file, caption=caption_text, parse_mode=ParseMode.HTML) if media_type == "photo"
+                else InputMediaVideo(media=file, caption=caption_text, parse_mode=ParseMode.HTML)
+            )
+            media.append(input_media)
+
+        await bot.send_media_group(CHANNEL_USERNAME, media)
+        if second_markup:
+            await bot.send_media_group(data.get("target_channel"), media, reply_markup=second_markup)
+        await message.reply("✅ Xabar guruh holatida yuborildi.")
+        await state.clear()
+        return
+
+    # Single media or text
     text = message.text or message.caption or ""
     cleaned = clean_text_preserve_html(text)
-    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
     cleaned = insert_at_symbol(cleaned, tag)
-
-    user_id = message.from_user.id
-    reply_markup = second_markup = None
 
     if data.get("button_mode") == "with_button":
         ref_id = f"{user_id}_{message.message_id}"
@@ -941,23 +980,20 @@ async def handle_final_message(message: types.Message, state: FSMContext):
     try:
         if message.photo:
             await bot.send_photo(CHANNEL_USERNAME, message.photo[-1].file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+            if second_markup:
+                await bot.send_photo(data["target_channel"], message.photo[-1].file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
         elif message.video:
             await bot.send_video(CHANNEL_USERNAME, message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+            if second_markup:
+                await bot.send_video(data["target_channel"], message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
         else:
             await bot.send_message(CHANNEL_USERNAME, cleaned, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+            if second_markup:
+                await bot.send_message(data["target_channel"], cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
 
-        if second_markup:
-            target_channel = data.get("target_channel")
-            if message.photo:
-                await bot.send_photo(target_channel, message.photo[-1].file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
-            elif message.video:
-                await bot.send_video(target_channel, message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
-            else:
-                await bot.send_message(target_channel, cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
-
-        await message.reply("\u2705 Xabar ikkala kanalga yuborildi.")
+        await message.reply("✅ Xabar yuborildi.")
     except Exception as e:
-        await message.reply(f"\u274c Yuborishda xatolik: {e}")
+        await message.reply(f"❌ Yuborishda xatolik: {e}")
 
     await state.clear()
 
@@ -966,27 +1002,27 @@ async def handle_readmore(callback: CallbackQuery):
     ref_id = callback.data.split(":", 1)[1]
     info = pending_messages.get(ref_id)
     if not info:
-        await callback.message.answer("\u274c Ma'lumot topilmadi.")
+        await callback.message.answer("❌ Ma'lumot topilmadi.")
         return
 
     user_id = callback.from_user.id
     try:
         member = await bot.get_chat_member(chat_id=info["target_channel"], user_id=user_id)
         if member.status in ("member", "administrator", "creator"):
-            await callback.message.answer(f"\u2705 <a href='{info['link']}'>Ma'lumotni o'qish</a>", parse_mode=ParseMode.HTML)
+            await callback.message.answer(f"✅ <a href='{info['link']}'>Ma'lumotni o'qish</a>", parse_mode=ParseMode.HTML)
         else:
             raise Exception("Not a member")
     except:
-        await callback.message.answer("\u2757\ufe0f Avval kanalga obuna bo'ling.")
+        await callback.message.answer("❗️Avval kanalga obuna bo'ling.")
 
 @dp.message()
 async def handle_non_admin(message: types.Message):
     if message.from_user.id not in ADMINS:
-        logging.info(f"\u26d4\ufe0f Blocked message from non-admin: {message.from_user.id}")
+        logging.info(f"⛔️ Blocked message from non-admin: {message.from_user.id}")
 
-# --- Main Entry Point ---
 async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
