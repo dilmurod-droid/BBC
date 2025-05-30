@@ -795,7 +795,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.chat_action import ChatActionSender
 
-API_TOKEN = "7364378096:AAHQ14X098RshIlptl8fm7ZEepYA3dIsAQY"
+API_TOKEN = "8022760553:AAF-XKj3e9l_jt_wRjH5mtiN_7umauNXsEw"
 CHANNEL_USERNAME = "@bbclduz"
 ADMINS_FILE = "admins.json"
 
@@ -916,11 +916,18 @@ async def handle_final_message(message: types.Message, state: FSMContext):
     tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
     cleaned = insert_at_symbol(cleaned, tag)
 
+    user_id = message.from_user.id
     reply_markup = None
+    second_markup = None
+
     if data.get("button_mode") == "with_button":
-        ref_id = f"{message.from_user.id}_{message.message_id}"
-        url_button = InlineKeyboardButton(text="Davomini o'qish...", callback_data=f"readmore:{ref_id}")
-        reply_markup = InlineKeyboardMarkup(inline_keyboard=[[url_button]])
+        ref_id = f"{user_id}_{message.message_id}"
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Davomini o'qish...", url=f"https://t.me/{data.get('target_channel').lstrip('@')}")]
+        ])
+        second_markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Davomini o'qish...", callback_data=f"readmore:{ref_id}")]
+        ])
         pending_messages[ref_id] = {
             "link": data.get("link"),
             "target_channel": data.get("target_channel")
@@ -933,7 +940,17 @@ async def handle_final_message(message: types.Message, state: FSMContext):
             await bot.send_video(CHANNEL_USERNAME, message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
         else:
             await bot.send_message(CHANNEL_USERNAME, cleaned, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
-        await message.reply("✅ Xabar kanalga yuborildi.")
+
+        if second_markup:
+            target_channel = data.get("target_channel")
+            if message.photo:
+                await bot.send_photo(target_channel, message.photo[-1].file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
+            elif message.video:
+                await bot.send_video(target_channel, message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
+            else:
+                await bot.send_message(target_channel, cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
+
+        await message.reply("✅ Xabar ikkala kanalga yuborildi.")
     except Exception as e:
         await message.reply(f"❌ Yuborishda xatolik: {e}")
 
@@ -964,6 +981,9 @@ async def handle_non_admin(message: types.Message):
 
 async def main():
     await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 if __name__ == "__main__":
     asyncio.run(main())
