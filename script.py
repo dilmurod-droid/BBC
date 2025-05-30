@@ -785,22 +785,27 @@ import json
 import logging
 import os
 import re
-import ssl
 from html.parser import HTMLParser
+
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
-from aiogram.types import InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import (
+    InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup,
+    InlineKeyboardButton, CallbackQuery
+)
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.chat_action import ChatActionSender
 
+# --- Configuration ---
 API_TOKEN = "7364378096:AAHQ14X098RshIlptl8fm7ZEepYA3dIsAQY"
 CHANNEL_USERNAME = "@bbclduz"
 ADMINS_FILE = "admins.json"
 
 logging.basicConfig(level=logging.INFO)
 
+# --- Initialization ---
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -868,12 +873,13 @@ def clean_text_preserve_html(text: str) -> str:
     return parser.get_cleaned().strip()
 
 def insert_at_symbol(text: str, tag: str) -> str:
-    markers = ["👉", "⚡️"]
+    markers = ["\ud83d\udc49", "\u26a1\ufe0f"]  # 👉 ⚡️
     for mark in markers:
         if mark in text:
             return text.replace(mark, f"{mark} {tag}", 1)
     return text.strip() + f" {tag}"
 
+# --- Handlers ---
 @dp.message(F.text == "/start")
 async def cmd_start(message: types.Message, state: FSMContext):
     if message.from_user.id in ADMINS:
@@ -884,7 +890,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await message.answer("Choose message type:", reply_markup=keyboard)
         await state.set_state(Form.choose_mode)
     else:
-        await message.reply("❗️ Ushbu bot faqat adminlar uchun mo'ljallangan.")
+        await message.reply("\u2757\ufe0f Ushbu bot faqat adminlar uchun mo'ljallangan.")
 
 @dp.callback_query(F.data.in_({"with_button", "without_button"}))
 async def choose_button_mode(callback: types.CallbackQuery, state: FSMContext):
@@ -917,8 +923,7 @@ async def handle_final_message(message: types.Message, state: FSMContext):
     cleaned = insert_at_symbol(cleaned, tag)
 
     user_id = message.from_user.id
-    reply_markup = None
-    second_markup = None
+    reply_markup = second_markup = None
 
     if data.get("button_mode") == "with_button":
         ref_id = f"{user_id}_{message.message_id}"
@@ -950,9 +955,9 @@ async def handle_final_message(message: types.Message, state: FSMContext):
             else:
                 await bot.send_message(target_channel, cleaned, parse_mode=ParseMode.HTML, reply_markup=second_markup)
 
-        await message.reply("✅ Xabar ikkala kanalga yuborildi.")
+        await message.reply("\u2705 Xabar ikkala kanalga yuborildi.")
     except Exception as e:
-        await message.reply(f"❌ Yuborishda xatolik: {e}")
+        await message.reply(f"\u274c Yuborishda xatolik: {e}")
 
     await state.clear()
 
@@ -961,29 +966,27 @@ async def handle_readmore(callback: CallbackQuery):
     ref_id = callback.data.split(":", 1)[1]
     info = pending_messages.get(ref_id)
     if not info:
-        await callback.message.answer("❌ Ma'lumot topilmadi.")
+        await callback.message.answer("\u274c Ma'lumot topilmadi.")
         return
 
     user_id = callback.from_user.id
     try:
         member = await bot.get_chat_member(chat_id=info["target_channel"], user_id=user_id)
         if member.status in ("member", "administrator", "creator"):
-            await callback.message.answer(f"✅ <a href='{info['link']}'>Ma'lumotni o'qish</a>", parse_mode=ParseMode.HTML)
+            await callback.message.answer(f"\u2705 <a href='{info['link']}'>Ma'lumotni o'qish</a>", parse_mode=ParseMode.HTML)
         else:
             raise Exception("Not a member")
     except:
-        await callback.message.answer("❗️Avval kanalga obuna bo'ling.")
+        await callback.message.answer("\u2757\ufe0f Avval kanalga obuna bo'ling.")
 
 @dp.message()
 async def handle_non_admin(message: types.Message):
     if message.from_user.id not in ADMINS:
-        logging.info(f"⛔️ Blocked message from non-admin: {message.from_user.id}")
+        logging.info(f"\u26d4\ufe0f Blocked message from non-admin: {message.from_user.id}")
 
+# --- Main Entry Point ---
 async def main():
     await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
 
 if __name__ == "__main__":
     asyncio.run(main())
