@@ -576,27 +576,239 @@ import asyncio
 
 # if __name__ == "__main__":
 #     asyncio.run(main())
+# import asyncio
+# import json
+# import logging
+# import os
+# import re
+# import ssl  # Ensures ssl is explicitly imported
+# from html.parser import HTMLParser
+# from aiogram import Bot, Dispatcher, F, types
+# from aiogram.enums import ParseMode
+# from aiogram.types import InputMediaPhoto, InputMediaVideo, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+
+# API_TOKEN = "7364378096:AAHQ14X098RshIlptl8fm7ZEepYA3dIsAQY"
+# CHANNEL_USERNAME = "@bbclduz"
+# ADMINS_FILE = "admins.json"
+
+# logging.basicConfig(level=logging.INFO)
+
+# bot = Bot(token=API_TOKEN)
+# dp = Dispatcher()
+
+# user_states = {}  # user_id: {"mode": "with"/"without", "link": str}
+
+# def load_json(filename, default):
+#     if not os.path.exists(filename):
+#         with open(filename, "w", encoding="utf-8") as f:
+#             json.dump(default, f)
+#         return default
+#     try:
+#         with open(filename, "r", encoding="utf-8") as f:
+#             content = f.read().strip()
+#             return json.loads(content) if content else default
+#     except Exception as e:
+#         logging.error(f"Failed to load {filename}: {e}")
+#         return default
+
+# def save_json(filename, data):
+#     try:
+#         with open(filename, "w", encoding="utf-8") as f:
+#             json.dump(data, f, indent=4, ensure_ascii=False)
+#     except Exception as e:
+#         logging.error(f"Failed to save {filename}: {e}")
+
+# ADMINS = set(load_json(ADMINS_FILE, [6667155546, 7148646716]))
+
+# def save_admins():
+#     save_json(ADMINS_FILE, list(ADMINS))
+
+# class SafeHTMLCleaner(HTMLParser):
+#     def __init__(self):
+#         super().__init__()
+#         self.result = []
+
+#     def handle_starttag(self, tag, attrs):
+#         if tag in {"b", "i", "u", "s", "code", "pre", "a"}:
+#             attr_str = ' '.join(f'{k}="{v}"' for k, v in attrs)
+#             self.result.append(f"<{tag} {attr_str}>")
+
+#     def handle_endtag(self, tag):
+#         if tag in {"b", "i", "u", "s", "code", "pre", "a"}:
+#             self.result.append(f"</{tag}>")
+
+#     def handle_data(self, data):
+#         data = re.sub(r'\(?https?://[^\s()]+\)?', '', data)
+#         data = re.sub(r'\(?t\.me/[^\s()]+\)?', '', data)
+#         data = re.sub(r'\(?telegram\.me/[^\s()]+\)?', '', data)
+#         data = re.sub(r"@[\w_]+", "", data)
+#         self.result.append(data)
+
+#     def get_cleaned(self):
+#         return ''.join(self.result)
+
+# def clean_text_preserve_html(text: str) -> str:
+#     parser = SafeHTMLCleaner()
+#     parser.feed(text)
+#     return parser.get_cleaned().strip()
+
+# def insert_at_symbol(text: str, tag: str) -> str:
+#     markers = ["👉", "⚡️"]
+#     for mark in markers:
+#         if mark in text:
+#             return text.replace(mark, f"{mark} {tag}", 1)
+#     return text.strip() + f" {tag}"
+
+# @dp.message(F.text == "/start")
+# async def cmd_start(message: types.Message):
+#     if message.from_user.id in ADMINS:
+#         keyboard = ReplyKeyboardMarkup(
+#             keyboard=[
+#                 [KeyboardButton(text="With Button")],
+#                 [KeyboardButton(text="Without Button")]
+#             ],
+#             resize_keyboard=True
+#         )
+#         await message.reply("👋 Salom, admin! Quyidagilardan birini tanlang:", reply_markup=keyboard)
+#     else:
+#         await message.reply("❗️ Ushbu bot faqat adminlar uchun mo'ljallangan.")
+
+# @dp.message(F.text.in_(["With Button", "Without Button"]))
+# async def handle_choice(message: types.Message):
+#     choice = message.text
+#     user_id = message.from_user.id
+#     mode = "with" if choice == "With Button" else "without"
+#     user_states[user_id] = {"mode": mode, "link": None}
+#     if mode == "with":
+#         await message.reply("🔗 Iltimos, tugma uchun havolani yuboring:", reply_markup=ReplyKeyboardRemove())
+#     else:
+#         await message.reply("✉️ Endi xabar, rasm yoki video yuboring:", reply_markup=ReplyKeyboardRemove())
+
+# @dp.message(F.text.startswith("http"))
+# async def handle_link(message: types.Message):
+#     user_id = message.from_user.id
+#     if user_id in user_states and user_states[user_id]["mode"] == "with" and not user_states[user_id]["link"]:
+#         user_states[user_id]["link"] = message.text.strip()
+#         await message.reply("✅ Endi xabar, rasm yoki video yuboring:")
+
+# @dp.message(F.from_user.id.in_(ADMINS), F.media_group_id)
+# async def handle_album(message: types.Message):
+#     group_id = message.media_group_id
+#     media_group_buffers.setdefault(group_id, []).append(message)
+#     await asyncio.sleep(1.2)
+
+#     messages = media_group_buffers.pop(group_id, [])
+#     if not messages:
+#         return
+
+#     caption_message = next((m for m in messages if m.caption), messages[0])
+#     text = caption_message.caption or ""
+#     cleaned = clean_text_preserve_html(text)
+#     tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
+#     cleaned = insert_at_symbol(cleaned, tag)
+
+#     user_id = caption_message.from_user.id
+#     user_data = user_states.get(user_id, {})
+#     if user_data.get("mode") == "with" and user_data.get("link"):
+#         markup = InlineKeyboardMarkup(inline_keyboard=[[
+#             InlineKeyboardButton(text="Davomini o'qish...", url=user_data["link"])
+#         ]])
+#     else:
+#         markup = None
+
+#     media = []
+#     for i, msg in enumerate(messages):
+#         caption = cleaned if i == 0 else None
+#         if msg.photo:
+#             media.append(InputMediaPhoto(media=msg.photo[-1].file_id, caption=caption, parse_mode=ParseMode.HTML))
+#         elif msg.video:
+#             media.append(InputMediaVideo(media=msg.video.file_id, caption=caption, parse_mode=ParseMode.HTML))
+
+#     try:
+#         if markup and len(media) == 1:
+#             if media[0].type == "photo":
+#                 await bot.send_photo(CHANNEL_USERNAME, media[0].media, caption=media[0].caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+#             else:
+#                 await bot.send_video(CHANNEL_USERNAME, media[0].media, caption=media[0].caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+#         else:
+#             await bot.send_media_group(chat_id=CHANNEL_USERNAME, media=media)
+
+#         await caption_message.reply("✅ Media guruhi kanalga yuborildi.")
+#     except Exception as e:
+#         await caption_message.reply(f"❌ Xatolik: {e}")
+
+# @dp.message(F.from_user.id.in_(ADMINS))
+# async def handle_admin_message(message: types.Message):
+#     user_id = message.from_user.id
+#     text = message.text or message.caption or ""
+#     if not text and not (message.photo or message.video):
+#         await message.reply("❗️ Matn, rasm yoki video jo'nating.")
+#         return
+
+#     cleaned = clean_text_preserve_html(text)
+#     tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
+#     cleaned = insert_at_symbol(cleaned, tag)
+
+#     user_data = user_states.get(user_id, {})
+#     markup = None
+#     if user_data.get("mode") == "with" and user_data.get("link"):
+#         markup = InlineKeyboardMarkup(inline_keyboard=[[
+#             InlineKeyboardButton(text="Davomini o'qish...", url=user_data["link"])
+#         ]])
+
+#     try:
+#         if message.photo:
+#             await bot.send_photo(CHANNEL_USERNAME, message.photo[-1].file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=markup)
+#         elif message.video:
+#             await bot.send_video(CHANNEL_USERNAME, message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=markup)
+#         else:
+#             await bot.send_message(CHANNEL_USERNAME, cleaned, parse_mode=ParseMode.HTML, reply_markup=markup)
+
+#         await message.reply("✅ Xabar kanalga yuborildi.")
+#         user_states.pop(user_id, None)  # Clear state
+#     except Exception as e:
+#         await message.reply(f"❌ Yuborishda xatolik: {e}")
+
+# @dp.message()
+# async def handle_non_admin(message: types.Message):
+#     if message.from_user.id not in ADMINS:
+#         logging.info(f"⛔️ Blocked message from non-admin: {message.from_user.id}")
+
+# async def main():
+#     await dp.start_polling(bot)
+
+# if __name__ == "__main__":
+#     asyncio.run(main())
+
 import asyncio
 import json
 import logging
 import os
 import re
-import ssl  # Ensures ssl is explicitly imported
+import ssl
 from html.parser import HTMLParser
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
-from aiogram.types import InputMediaPhoto, InputMediaVideo, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 
-API_TOKEN = "7364378096:AAHQ14X098RshIlptl8fm7ZEepYA3dIsAQY"
+API_TOKEN = "8022760553:AAF-XKj3e9l_jt_wRjH5mtiN_7umauNXsEw"
 CHANNEL_USERNAME = "@bbclduz"
 ADMINS_FILE = "admins.json"
 
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
 
-user_states = {}  # user_id: {"mode": "with"/"without", "link": str}
+class Form(StatesGroup):
+    choose_mode = State()
+    ask_link = State()
+    save_content = State()
+
+pending_messages = {}
 
 def load_json(filename, default):
     if not os.path.exists(filename):
@@ -660,114 +872,59 @@ def insert_at_symbol(text: str, tag: str) -> str:
     return text.strip() + f" {tag}"
 
 @dp.message(F.text == "/start")
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
     if message.from_user.id in ADMINS:
-        keyboard = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="With Button")],
-                [KeyboardButton(text="Without Button")]
-            ],
-            resize_keyboard=True
-        )
-        await message.reply("👋 Salom, admin! Quyidagilardan birini tanlang:", reply_markup=keyboard)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="With Button", callback_data="with_button")],
+            [InlineKeyboardButton(text="Without Button", callback_data="without_button")]
+        ])
+        await message.answer("Choose message type:", reply_markup=keyboard)
+        await state.set_state(Form.choose_mode)
     else:
         await message.reply("❗️ Ushbu bot faqat adminlar uchun mo'ljallangan.")
 
-@dp.message(F.text.in_(["With Button", "Without Button"]))
-async def handle_choice(message: types.Message):
-    choice = message.text
-    user_id = message.from_user.id
-    mode = "with" if choice == "With Button" else "without"
-    user_states[user_id] = {"mode": mode, "link": None}
-    if mode == "with":
-        await message.reply("🔗 Iltimos, tugma uchun havolani yuboring:", reply_markup=ReplyKeyboardRemove())
+@dp.callback_query(F.data.in_({"with_button", "without_button"}))
+async def choose_button_mode(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(button_mode=callback.data)
+    if callback.data == "with_button":
+        await callback.message.answer("Iltimos, linkni yuboring:")
+        await state.set_state(Form.ask_link)
     else:
-        await message.reply("✉️ Endi xabar, rasm yoki video yuboring:", reply_markup=ReplyKeyboardRemove())
+        await callback.message.answer("Endi xabarni yuboring.")
+        await state.set_state(Form.save_content)
 
-@dp.message(F.text.startswith("http"))
-async def handle_link(message: types.Message):
-    user_id = message.from_user.id
-    if user_id in user_states and user_states[user_id]["mode"] == "with" and not user_states[user_id]["link"]:
-        user_states[user_id]["link"] = message.text.strip()
-        await message.reply("✅ Endi xabar, rasm yoki video yuboring:")
+@dp.message(Form.ask_link)
+async def receive_link(message: types.Message, state: FSMContext):
+    await state.update_data(link=message.text)
+    await message.answer("Endi xabarni yuboring.")
+    await state.set_state(Form.save_content)
 
-@dp.message(F.from_user.id.in_(ADMINS), F.media_group_id)
-async def handle_album(message: types.Message):
-    group_id = message.media_group_id
-    media_group_buffers.setdefault(group_id, []).append(message)
-    await asyncio.sleep(1.2)
-
-    messages = media_group_buffers.pop(group_id, [])
-    if not messages:
-        return
-
-    caption_message = next((m for m in messages if m.caption), messages[0])
-    text = caption_message.caption or ""
-    cleaned = clean_text_preserve_html(text)
-    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
-    cleaned = insert_at_symbol(cleaned, tag)
-
-    user_id = caption_message.from_user.id
-    user_data = user_states.get(user_id, {})
-    if user_data.get("mode") == "with" and user_data.get("link"):
-        markup = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Davomini o'qish...", url=user_data["link"])
-        ]])
-    else:
-        markup = None
-
-    media = []
-    for i, msg in enumerate(messages):
-        caption = cleaned if i == 0 else None
-        if msg.photo:
-            media.append(InputMediaPhoto(media=msg.photo[-1].file_id, caption=caption, parse_mode=ParseMode.HTML))
-        elif msg.video:
-            media.append(InputMediaVideo(media=msg.video.file_id, caption=caption, parse_mode=ParseMode.HTML))
-
-    try:
-        if markup and len(media) == 1:
-            if media[0].type == "photo":
-                await bot.send_photo(CHANNEL_USERNAME, media[0].media, caption=media[0].caption, parse_mode=ParseMode.HTML, reply_markup=markup)
-            else:
-                await bot.send_video(CHANNEL_USERNAME, media[0].media, caption=media[0].caption, parse_mode=ParseMode.HTML, reply_markup=markup)
-        else:
-            await bot.send_media_group(chat_id=CHANNEL_USERNAME, media=media)
-
-        await caption_message.reply("✅ Media guruhi kanalga yuborildi.")
-    except Exception as e:
-        await caption_message.reply(f"❌ Xatolik: {e}")
-
-@dp.message(F.from_user.id.in_(ADMINS))
-async def handle_admin_message(message: types.Message):
-    user_id = message.from_user.id
+@dp.message(Form.save_content)
+async def handle_final_message(message: types.Message, state: FSMContext):
+    data = await state.get_data()
     text = message.text or message.caption or ""
-    if not text and not (message.photo or message.video):
-        await message.reply("❗️ Matn, rasm yoki video jo'nating.")
-        return
-
     cleaned = clean_text_preserve_html(text)
     tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
     cleaned = insert_at_symbol(cleaned, tag)
 
-    user_data = user_states.get(user_id, {})
-    markup = None
-    if user_data.get("mode") == "with" and user_data.get("link"):
-        markup = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Davomini o'qish...", url=user_data["link"])
-        ]])
+    reply_markup = None
+    if data.get("button_mode") == "with_button":
+        url = data.get("link")
+        button = InlineKeyboardButton(text="Davomini o'qish...", url=url)
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=[[button]])
 
     try:
         if message.photo:
-            await bot.send_photo(CHANNEL_USERNAME, message.photo[-1].file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await bot.send_photo(CHANNEL_USERNAME, message.photo[-1].file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
         elif message.video:
-            await bot.send_video(CHANNEL_USERNAME, message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await bot.send_video(CHANNEL_USERNAME, message.video.file_id, caption=cleaned, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
         else:
-            await bot.send_message(CHANNEL_USERNAME, cleaned, parse_mode=ParseMode.HTML, reply_markup=markup)
-
+            await bot.send_message(CHANNEL_USERNAME, cleaned, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
         await message.reply("✅ Xabar kanalga yuborildi.")
-        user_states.pop(user_id, None)  # Clear state
     except Exception as e:
         await message.reply(f"❌ Yuborishda xatolik: {e}")
+
+    await state.clear()
 
 @dp.message()
 async def handle_non_admin(message: types.Message):
