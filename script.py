@@ -476,13 +476,6 @@ def remove_explicit_links_and_mentions(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 media_group_buffers = {}
-@dp.message(F.text == "/start")
-async def start_command(message: types.Message):
-    if message.from_user.id in ADMINS:
-        await message.reply("👋 Salom, admin! Siz kanalga xabar yuborishingiz mumkin.")
-    else:
-        logging.info(f"Non-admin user {message.from_user.id} tried to use /start.")
-        await message.reply("❗️ Bu bot faqat administratorlar uchun mo‘ljallangan.")
 @dp.message(F.from_user.id.in_(ADMINS), F.media_group_id)
 async def handle_media_group(message: types.Message):
     media_group_id = message.media_group_id
