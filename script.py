@@ -428,7 +428,7 @@ import json
 import logging
 import os
 import re
-import ssl  # Required for HTTPS support
+import ssl  # Ensures ssl is explicitly imported
 from html.parser import HTMLParser
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
@@ -443,7 +443,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Load and save admin list
 def load_json(filename, default):
     if not os.path.exists(filename):
         with open(filename, "w", encoding="utf-8") as f:
@@ -469,7 +468,6 @@ ADMINS = set(load_json(ADMINS_FILE, [6667155546, 7148646716]))
 def save_admins():
     save_json(ADMINS_FILE, list(ADMINS))
 
-# HTML Cleaner that keeps safe tags
 class SafeHTMLCleaner(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -485,10 +483,10 @@ class SafeHTMLCleaner(HTMLParser):
             self.result.append(f"</{tag}>")
 
     def handle_data(self, data):
-        # Remove links and mentions not inside anchor tags
-        data = re.sub(r'(?<!href=")https?://[^\s<>"]+', '', data)
-        data = re.sub(r'(?<!href=")(t\.me|telegram\.me)/[^\s<>"]+', '', data)
-        data = re.sub(r"(?<!href=\")@[\w_]+", "", data)
+        data = re.sub(r'\(?(https?://[^\s()]+)\)?', '', data)
+        data = re.sub(r'\(?(t\.me/[^\s()]+)\)?', '', data)
+        data = re.sub(r'\(?(telegram\.me/[^\s()]+)\)?', '', data)
+        data = re.sub(r"@[\w_]+", "", data)
         self.result.append(data)
 
     def get_cleaned(self):
@@ -500,11 +498,12 @@ def clean_text_preserve_html(text: str) -> str:
     return parser.get_cleaned().strip()
 
 def insert_at_symbol(text: str, tag: str) -> str:
-    if "👉" in text:
-        return text.replace("👉", f"👉 {tag}", 1)
+    markers = ["👉", "⚡️"]
+    for mark in markers:
+        if mark in text:
+            return text.replace(mark, f"{mark} {tag}", 1)
     return text.strip() + f" {tag}"
 
-# Handle /start
 @dp.message(F.text == "/start")
 async def cmd_start(message: types.Message):
     if message.from_user.id in ADMINS:
@@ -512,7 +511,6 @@ async def cmd_start(message: types.Message):
     else:
         await message.reply("❗️ Ushbu bot faqat adminlar uchun mo'ljallangan.")
 
-# Media group (album) buffer
 media_group_buffers = {}
 
 @dp.message(F.from_user.id.in_(ADMINS), F.media_group_id)
@@ -528,7 +526,7 @@ async def handle_album(message: types.Message):
     caption_message = next((m for m in messages if m.caption), messages[0])
     text = caption_message.caption or ""
     cleaned = clean_text_preserve_html(text)
-    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
+    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{@CHANNEL_USERNAME}</a>"
     cleaned = insert_at_symbol(cleaned, tag)
 
     media = []
@@ -545,7 +543,6 @@ async def handle_album(message: types.Message):
     except Exception as e:
         await caption_message.reply(f"❌ Xatolik: {e}")
 
-# Handle text/photo/video messages from admins
 @dp.message(F.from_user.id.in_(ADMINS))
 async def handle_admin_message(message: types.Message):
     text = message.text or message.caption or ""
@@ -554,7 +551,7 @@ async def handle_admin_message(message: types.Message):
         return
 
     cleaned = clean_text_preserve_html(text)
-    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>@bbclduz</a>"
+    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{@CHANNEL_USERNAME}</a>"
     cleaned = insert_at_symbol(cleaned, tag)
 
     try:
@@ -569,13 +566,11 @@ async def handle_admin_message(message: types.Message):
     except Exception as e:
         await message.reply(f"❌ Yuborishda xatolik: {e}")
 
-# Ignore non-admins
 @dp.message()
 async def handle_non_admin(message: types.Message):
     if message.from_user.id not in ADMINS:
         logging.info(f"⛔️ Blocked message from non-admin: {message.from_user.id}")
 
-# Run bot
 async def main():
     await dp.start_polling(bot)
 
