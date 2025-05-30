@@ -587,7 +587,7 @@ from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
 from aiogram.types import InputMediaPhoto, InputMediaVideo, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 
-API_TOKEN = "8022760553:AAF-XKj3e9l_jt_wRjH5mtiN_7umauNXsEw"
+API_TOKEN = "7364378096:AAHQ14X098RshIlptl8fm7ZEepYA3dIsAQY"
 CHANNEL_USERNAME = "@bbclduz"
 ADMINS_FILE = "admins.json"
 
