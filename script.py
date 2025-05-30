@@ -526,7 +526,7 @@ async def handle_album(message: types.Message):
     caption_message = next((m for m in messages if m.caption), messages[0])
     text = caption_message.caption or ""
     cleaned = clean_text_preserve_html(text)
-    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{@CHANNEL_USERNAME}</a>"
+    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
     cleaned = insert_at_symbol(cleaned, tag)
 
     media = []
@@ -551,7 +551,7 @@ async def handle_admin_message(message: types.Message):
         return
 
     cleaned = clean_text_preserve_html(text)
-    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{@CHANNEL_USERNAME}</a>"
+    tag = f"<a href='https://t.me/{CHANNEL_USERNAME.lstrip('@')}'>{CHANNEL_USERNAME}</a>"
     cleaned = insert_at_symbol(cleaned, tag)
 
     try:
