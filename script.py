@@ -794,7 +794,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 API_TOKEN = "7364378096:AAHQ14X098RshIlptl8fm7ZEepYA3dIsAQY"
-CHANNEL_USERNAME = "@bbclduz"
+CHANNEL_USERNAME = "@bbcld_news"
 ADMINS_FILE = "admins.json"
 
 logging.basicConfig(level=logging.INFO)
